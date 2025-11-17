@@ -211,6 +211,8 @@ class Communicator:
                                 clear = True
                             elif action == "learn":
                                 cur_sensor['learn'] = True
+                            elif action == "msc":
+                                cur_sensor['msc'] = True
                             elif action == "raw_data":
                                 if 'raw_data' in mqtt_json_payload:
                                     cur_sensor['raw_data'] = mqtt_json_payload['raw_data']
@@ -278,6 +280,9 @@ class Communicator:
         # Delete learn
         if 'learn' in sensor:
             del sensor['learn']
+
+        if 'msc' in sensor:
+            del sensor['msc']
 
         # Delete raw_data if any
         if 'raw_data' in sensor:
@@ -477,14 +482,25 @@ class Communicator:
         if sensor.get('learn'):
             force_learn = True
 
-        try:
-            # Now pass command to RadioPacket.create()
-            packet = RadioPacket.create(sensor['rorg'], sensor['func'], sensor['type'],
-                                        direction=direction, command=command, sender=sender,
-                                        destination=destination, learn=is_learn_response|force_learn)
-        except ValueError as err:
-            logging.error("Cannot create RF packet: %s", err)
-            return
+        if sensor.get('msc'):
+            if not 'raw_data' in sensor:
+                 raise Exception('Tried to send msc without having raw_data')
+                                 
+            raw_data = enocean.utils.from_hex_string(sensor['raw_data'])
+            logging.debug("sensor raw data: %s", raw_data)
+            del sensor['raw_data']
+            packet = RadioPacket.create_msc(
+                                        sender=sender,
+                                        destination=destination, data=raw_data)
+        else:
+            try:
+                # Now pass command to RadioPacket.create()
+                packet = RadioPacket.create(sensor['rorg'], sensor['func'], sensor['type'],
+                                            direction=direction, command=command, sender=sender,
+                                            destination=destination, learn=is_learn_response|force_learn)
+            except ValueError as err:
+                logging.error("Cannot create RF packet: %s", err)
+                return
 
         # assemble data based on packet type (learn / data)
         if not is_learn_response:
